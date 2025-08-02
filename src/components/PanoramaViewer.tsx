@@ -21,6 +21,7 @@ export default function PanoramaViewer({ videoFile }: PanoramaViewerProps) {
   const [isMuted, setIsMuted] = useState(false)
   const [volume, setVolume] = useState(0.8)
   const [isPlaying, setIsPlaying] = useState(true)
+  const syncIntervalRef = useRef<NodeJS.Timeout | null>(null)
 
   // マウス操作用の状態
   const mouseRef = useRef({
@@ -201,6 +202,52 @@ export default function PanoramaViewer({ videoFile }: PanoramaViewerProps) {
         video.addEventListener('error', handleError, { once: true })
         video.addEventListener('canplay', handleCanPlay, { once: true })
         video.addEventListener('loadstart', handleLoadStart, { once: true })
+        
+        // 同期用イベントリスナーを追加（映像用）
+        video.addEventListener('ended', () => {
+          console.log('映像再生終了 - 同期実行')
+          syncVideoAndAudio()
+        })
+        
+        video.addEventListener('seeked', () => {
+          console.log('映像シーク完了 - 同期実行')
+          syncVideoAndAudio()
+        })
+        
+        // 同期用イベントリスナーを追加（音声用）
+        audioVideo.addEventListener('ended', () => {
+          console.log('音声再生終了 - 同期実行')
+          syncVideoAndAudio()
+        })
+        
+        audioVideo.addEventListener('seeked', () => {
+          console.log('音声シーク完了 - 同期実行')
+          syncVideoAndAudio()
+        })
+        
+        // ループ再生時の同期をより確実にするためのtimeupdateイベント
+        let lastVideoTime = 0
+        let lastAudioTime = 0
+        
+        video.addEventListener('timeupdate', () => {
+          const currentVideoTime = video.currentTime
+          // 映像の再生位置が大きく変わった場合（ループ時など）
+          if (Math.abs(currentVideoTime - lastVideoTime) > 1.0) {
+            console.log('映像ループ検出 - 同期実行')
+            syncVideoAndAudio()
+          }
+          lastVideoTime = currentVideoTime
+        })
+        
+        audioVideo.addEventListener('timeupdate', () => {
+          const currentAudioTime = audioVideo.currentTime
+          // 音声の再生位置が大きく変わった場合（ループ時など）
+          if (Math.abs(currentAudioTime - lastAudioTime) > 1.0) {
+            console.log('音声ループ検出 - 同期実行')
+            syncVideoAndAudio()
+          }
+          lastAudioTime = currentAudioTime
+        })
 
         // タイムアウト設定（15秒後にエラー）
         const timeoutId = setTimeout(() => {
@@ -481,6 +528,12 @@ export default function PanoramaViewer({ videoFile }: PanoramaViewerProps) {
       if (textureRef.current) {
         textureRef.current.dispose()
       }
+      
+      // 同期インターバルを停止
+      if (syncIntervalRef.current) {
+        clearInterval(syncIntervalRef.current)
+        syncIntervalRef.current = null
+      }
     }
   }, [videoFile])
 
@@ -523,6 +576,26 @@ export default function PanoramaViewer({ videoFile }: PanoramaViewerProps) {
     }
   }, [volume, isMuted])
 
+  // 音声と映像の同期を取る関数
+  const syncVideoAndAudio = useCallback(() => {
+    if (videoRef.current && audioVideoRef.current) {
+      const videoCurrent = videoRef.current.currentTime
+      const audioCurrent = audioVideoRef.current.currentTime
+      const timeDiff = Math.abs(videoCurrent - audioCurrent)
+      
+      // 0.1秒以上のズレがある場合に同期
+      if (timeDiff > 0.1) {
+        console.log('同期実行:', {
+          videoCurrent,
+          audioCurrent,
+          timeDiff,
+          syncTo: videoCurrent
+        })
+        audioVideoRef.current.currentTime = videoCurrent
+      }
+    }
+  }, [])
+
   // 音量変更ハンドラー（状態更新のみ、useEffectで実際の音量設定）
   const handleVolumeChange = (newVolume: number) => {
     console.log('音量変更ハンドラー:', { 
@@ -553,6 +626,9 @@ export default function PanoramaViewer({ videoFile }: PanoramaViewerProps) {
     
     if (videoRef.current && audioVideoRef.current) {
       if (newPlayingState) {
+        // 再生前に同期を取る
+        syncVideoAndAudio()
+        
         videoRef.current.play().catch(console.warn)
         audioVideoRef.current.play().catch(console.warn)
         console.log('再生開始')
@@ -561,6 +637,13 @@ export default function PanoramaViewer({ videoFile }: PanoramaViewerProps) {
         if (textureRef.current) {
           textureRef.current.needsUpdate = true
         }
+        
+        // 定期的な同期チェックを開始（5秒間隔）
+        if (syncIntervalRef.current) {
+          clearInterval(syncIntervalRef.current)
+        }
+        syncIntervalRef.current = setInterval(syncVideoAndAudio, 5000)
+        
       } else {
         videoRef.current.pause()
         audioVideoRef.current.pause()
@@ -570,9 +653,15 @@ export default function PanoramaViewer({ videoFile }: PanoramaViewerProps) {
         if (textureRef.current) {
           textureRef.current.needsUpdate = false
         }
+        
+        // 定期同期を停止
+        if (syncIntervalRef.current) {
+          clearInterval(syncIntervalRef.current)
+          syncIntervalRef.current = null
+        }
       }
     }
-  }, [isPlaying])
+  }, [isPlaying, syncVideoAndAudio])
 
   // スペースキーイベントハンドラー（useCallbackで最新の状態を参照）
   const handleKeyDown = useCallback((event: KeyboardEvent) => {
