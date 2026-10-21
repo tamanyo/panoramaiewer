@@ -9,13 +9,13 @@ interface PanoramaViewerProps {
 
 export default function PanoramaViewer({ videoFile }: PanoramaViewerProps) {
   const mountRef = useRef<HTMLDivElement>(null)
-  const sceneRef = useRef<THREE.Scene>()
-  const rendererRef = useRef<THREE.WebGLRenderer>()
-  const cameraRef = useRef<THREE.PerspectiveCamera>()
-  const sphereRef = useRef<THREE.Mesh>()
-  const videoRef = useRef<HTMLVideoElement>() // Three.js用（映像のみ、音声なし）
-  const audioVideoRef = useRef<HTMLVideoElement>() // 音声専用
-  const textureRef = useRef<THREE.VideoTexture>()
+  const sceneRef = useRef<THREE.Scene | undefined>(undefined)
+  const rendererRef = useRef<THREE.WebGLRenderer | undefined>(undefined)
+  const cameraRef = useRef<THREE.PerspectiveCamera | undefined>(undefined)
+  const sphereRef = useRef<THREE.Mesh | undefined>(undefined)
+  const videoRef = useRef<HTMLVideoElement | undefined>(undefined) // Three.js用（映像のみ、音声なし）
+  const audioVideoRef = useRef<HTMLVideoElement | undefined>(undefined) // 音声専用
+  const textureRef = useRef<THREE.VideoTexture | undefined>(undefined)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [isMuted, setIsMuted] = useState(false)
